@@ -1,19 +1,18 @@
 """Run sphere indentation on the fixed GenTac bench and save sensor-frame outputs."""
 
-import argparse
 import json
 from dataclasses import asdict
-from datetime import datetime, timezone
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import numpy as np
-from gentac_markers import bind_markers
-from gentac_sensor import MINI_GEL, MINI_MARKERS, GelSpec, MarkerGrid
 from trimesh.triangles import closest_point
 
-_DEFAULT_RADIUS_M = 0.003
-_DEFAULT_HYDROELASTIC_MODULUS_PA = 2_000_000.0
+from .markers import bind_markers
+from .sensor import MINI_GEL, MINI_MARKERS, GelSpec, MarkerGrid
+
+DEFAULT_RADIUS_M = 0.003
+DEFAULT_HYDROELASTIC_MODULUS_PA = 2_000_000.0
 _PRESET_REFERENCE = (
     "https://github.com/univtac/UniVTAC/blob/main/third_party/TacEx/source/"
     "tacex_assets/tacex_assets/sensors/gelsight_mini/gsmini_cfg.py"
@@ -28,8 +27,8 @@ def run(
     save_every: int,
     gel: GelSpec = MINI_GEL,
     markers: MarkerGrid = MINI_MARKERS,
-    radius_m: float = _DEFAULT_RADIUS_M,
-    hydroelastic_modulus_pa: float = _DEFAULT_HYDROELASTIC_MODULUS_PA,
+    radius_m: float = DEFAULT_RADIUS_M,
+    hydroelastic_modulus_pa: float = DEFAULT_HYDROELASTIC_MODULUS_PA,
     overwrite: bool = False,
 ) -> dict:
     """Simulate a fixed, world-aligned sensor and save its surface and marker trajectories."""
@@ -47,7 +46,7 @@ def run(
         raise NotADirectoryError(output)
 
     # Load Genesis after argument checks, so CLI help works without initializing the solver.
-    from gentac_sap import simulate
+    from .sap import simulate
 
     markers_rest = markers.positions(gel)
     state = simulate(
@@ -137,46 +136,3 @@ def run(
         for artifact in staging.iterdir():
             artifact.replace(output / artifact.name)
     return report
-
-
-def main() -> None:
-    """Parse arguments and run one indentation sequence."""
-    parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--depth-mm", type=float, default=0.5)
-    parser.add_argument("--radius-mm", type=float, default=_DEFAULT_RADIUS_M * 1_000)
-    parser.add_argument(
-        "--hydroelastic-modulus-pa",
-        type=float,
-        default=_DEFAULT_HYDROELASTIC_MODULUS_PA,
-    )
-    parser.add_argument("--steps", type=int, default=120)
-    parser.add_argument("--save-every", type=int, default=5)
-    parser.add_argument("--out", type=Path)
-    parser.add_argument("--overwrite", action="store_true")
-    args = parser.parse_args()
-    run_id = datetime.now(timezone.utc).strftime("indent-%Y%m%dT%H%M%S%fZ")
-    output = (
-        args.out if args.out else Path(__file__).resolve().parent / "output" / run_id
-    )
-    try:
-        report = run(
-            output,
-            depth_m=args.depth_mm / 1_000,
-            steps=args.steps,
-            save_every=args.save_every,
-            radius_m=args.radius_mm / 1_000,
-            hydroelastic_modulus_pa=args.hydroelastic_modulus_pa,
-            overwrite=args.overwrite,
-        )
-    except (ValueError, FileExistsError, NotADirectoryError) as exc:
-        parser.error(str(exc))
-    print(
-        f"{output.resolve()}\n"
-        f"Surface down: {1e3 * report['max_surface_down_m']:.3f} mm, "
-        f"marker in-plane: {1e3 * report['max_marker_in_plane_m']:.3f} mm, "
-        f"surface overlap: {1e3 * report['max_surface_overlap_m']:.3f} mm"
-    )
-
-
-if __name__ == "__main__":
-    main()

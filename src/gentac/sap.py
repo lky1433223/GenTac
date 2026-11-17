@@ -5,8 +5,9 @@ from tempfile import TemporaryDirectory
 
 import genesis as gs
 import numpy as np
-from gentac_sensor import GelSpec, make_gel_mesh
 from numpy.typing import NDArray
+
+from .sensor import GelSpec, make_gel_mesh
 
 STEP_S = 0.002
 GAP_M = 0.0001
