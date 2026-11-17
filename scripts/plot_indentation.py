@@ -3,7 +3,7 @@
 import argparse
 from pathlib import Path
 
-from gentac.visualization import plot_run
+from gentac.visualization import plot_combined_video, plot_run
 
 
 def main() -> None:
@@ -26,15 +26,25 @@ def main() -> None:
         action="store_true",
         help="Export synchronized Genesis camera and material texture MP4",
     )
+    parser.add_argument(
+        "--combined", action="store_true", help="Export one video with all four views"
+    )
     args = parser.parse_args()
-    try:
-        output = plot_run(
-            args.run_dir,
-            frame=args.frame,
-            texture=args.texture,
-            video=args.video,
-            camera_texture=args.camera_texture,
+    if args.combined and (args.video or args.camera_texture or args.frame != -1):
+        parser.error(
+            "--combined exports all frames and cannot be combined with --frame, --video or --camera-texture"
         )
+    try:
+        if args.combined:
+            output = plot_combined_video(args.run_dir, texture=args.texture)
+        else:
+            output = plot_run(
+                args.run_dir,
+                frame=args.frame,
+                texture=args.texture,
+                video=args.video,
+                camera_texture=args.camera_texture,
+            )
     except (OSError, ValueError, IndexError, KeyError, RuntimeError) as exc:
         parser.error(str(exc))
     print(output.resolve())

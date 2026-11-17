@@ -2,6 +2,8 @@
 
 from collections.abc import Callable
 from pathlib import Path
+from subprocess import run
+from tempfile import TemporaryDirectory
 
 import numpy as np
 from matplotlib import colormaps
@@ -334,3 +336,44 @@ def plot_run(
         draw_camera(index)
         fig.savefig(out / "genesis-and-texture.png", dpi=100)
     return out
+
+
+def plot_combined_video(run_dir: Path, *, texture: Path | None = None) -> Path:
+    """Stack the synchronized camera and FEM panels into one MP4."""
+    output = run_dir / "combined-video"
+    if output.exists():
+        raise FileExistsError(f"{output} already exists")
+    state_path = (run_dir / "state.npz").resolve(strict=True)
+    with TemporaryDirectory(dir=run_dir) as scratch:
+        staging = Path(scratch)
+        (staging / "state.npz").symlink_to(state_path)
+        clips = plot_run(staging, texture=texture, video=True, camera_texture=True)
+        video = staging / "indentation-combined.mp4"
+        result = run(
+            [
+                FFMpegWriter.bin_path(),
+                "-v",
+                "error",
+                "-i",
+                str(clips / "genesis-and-texture.mp4"),
+                "-i",
+                str(clips / "indentation.mp4"),
+                "-filter_complex",
+                "vstack=inputs=2:shortest=1",
+                "-c:v",
+                "libx264",
+                "-pix_fmt",
+                "yuv420p",
+                "-movflags",
+                "+faststart",
+                str(video),
+            ],
+            capture_output=True,
+            text=True,
+        )
+        if result.returncode:
+            raise RuntimeError(
+                result.stderr.strip() or "FFmpeg could not combine the videos"
+            )
+        output.mkdir()
+        return video.replace(output / video.name)

@@ -66,6 +66,9 @@ uv run --frozen python scripts/plot_indentation.py output/<run-id> --frame 10 --
 ```bash
 uv run --frozen python scripts/run_indentation.py --camera
 uv run --frozen python scripts/plot_indentation.py output/<run-id> --camera-texture
+uv run --frozen python scripts/plot_indentation.py output/<run-id> --combined
 ```
 
 `--camera` 将 Genesis 外部调试相机的 RGB 与 FEM 网格状态在同一仿真步保存到 `state.npz`。`--camera-texture` 使用 FFmpeg 生成 `genesis-and-texture.mp4` 及静态预览。左侧是相机画面，右侧是接触区域贴图与真实位移比例的标记。可以加 `--texture` 替换默认棋盘格。
+
+`--combined` 将 Genesis 相机和材质贴图放在上排，FEM 三维重建和俯视位移图放在下排，合成为一个同步视频 `combined-video/indentation-combined.mp4`。同样支持 `--texture`。
