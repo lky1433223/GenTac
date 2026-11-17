@@ -1,0 +1,6 @@
+[project]
+name = "gentac"
+version = "0.1.0"
+description = "FEM visuotactile simulation in Genesis"
+requires-python = ">=3.12,<3.15"
+dependencies = ["genesis-world==1.4.6", "numpy", "pillow", "trimesh", "torch", "matplotlib"]
