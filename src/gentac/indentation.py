@@ -6,6 +6,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import numpy as np
+from PIL import Image
 from trimesh.triangles import closest_point
 
 from .markers import bind_markers
@@ -17,6 +18,7 @@ from .sensor import (
     HousingSpec,
     MarkerGrid,
 )
+from .tactile_camera import CameraSpec, render_tactile
 
 DEFAULT_RADIUS_M = 0.003
 DEFAULT_HYDROELASTIC_MODULUS_PA = 2_000_000.0
@@ -40,6 +42,7 @@ def run(
     capture_camera: bool = False,
     housing: HousingSpec = MINI_HOUSING,
     slide_m: float = 0.0,
+    tactile_camera: CameraSpec | None = None,
 ) -> dict:
     """Simulate a fixed, world-aligned sensor and save its surface and marker trajectories."""
     if not np.isfinite(depth_m) or not 0 < depth_m < gel.size_m[2]:
@@ -144,6 +147,11 @@ def run(
         "max_marker_in_plane_m": peak_marker_xy,
         "max_surface_overlap_m": max(overlap),
     }
+    tactile = {}
+    if tactile_camera is not None:
+        tactile, report["tactile_camera"] = render_tactile(
+            surface_rest, surface_xyz, surface_faces, markers_xyz, tactile_camera
+        )
     output.parent.mkdir(parents=True, exist_ok=True)
     with TemporaryDirectory(dir=output.parent) as temp:
         staging = Path(temp)
@@ -164,7 +172,13 @@ def run(
             indenter_radius_m=radius,
             surface_overlap_m=overlap,
             **({"camera_rgb": state["camera_rgb"]} if capture_camera else {}),
+            **tactile,
         )
+        if tactile_camera is not None:
+            rgb = tactile["tactile_rgb"]
+            Image.fromarray(np.concatenate((rgb[0], rgb[-1]), axis=1)).save(
+                staging / "tactile-preview.png"
+            )
         (staging / "run.json").write_text(
             json.dumps(report, indent=2) + "\n", encoding="utf-8"
         )

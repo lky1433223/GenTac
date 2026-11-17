@@ -72,3 +72,15 @@ uv run --frozen python scripts/plot_indentation.py output/<run-id> --combined
 `--camera` 将 Genesis 外部调试相机的 RGB 与 FEM 网格状态在同一仿真步保存到 `state.npz`。`--camera-texture` 使用 FFmpeg 生成 `genesis-and-texture.mp4` 及静态预览。左侧是相机画面，右侧是接触区域贴图与真实位移比例的标记。可以加 `--texture` 替换默认棋盘格。
 
 `--combined` 将 Genesis 相机和材质贴图放在上排，FEM 三维重建和俯视位移图放在下排，合成为一个同步视频 `combined-video/indentation-combined.mp4`。同样支持 `--texture`。
+
+### 内部触觉相机
+
+```bash
+uv run --frozen python scripts/run_indentation.py --tactile-camera
+```
+
+内部相机读取每个采样步的 FEM 接触面，从凝胶背侧用针孔模型投影。默认分辨率 320 × 240，使用三方向 RGB 照明近似和随表面变形的圆点。当前模型直接观察反光层，省略凝胶折射和外壳光路，光学参数尚未标定。
+
+- `tactile-preview.png` 并排显示初始与末帧的触觉 RGB。
+- `state.npz` 中的 `tactile_rgb`、`tactile_depth_m`、`tactile_depth_delta_m` 和 `tactile_normal` 共享像素坐标和采样步。深度是相机轴向距离，视野内没有表面的像素用 NaN 表示。法线朝向相机，以传感器系表达。
+- `tactile_marker_uv_px` 和 `tactile_marker_disp_px` 保存同一相机下的标记坐标和位移。相机参数记录在 `run.json`。

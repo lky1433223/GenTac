@@ -9,6 +9,7 @@ from gentac.indentation import (
     DEFAULT_RADIUS_M,
     run,
 )
+from gentac.tactile_camera import CameraSpec
 
 
 def main() -> None:
@@ -31,6 +32,11 @@ def main() -> None:
     parser.add_argument(
         "--camera", action="store_true", help="Record synchronized Genesis RGB frames"
     )
+    parser.add_argument(
+        "--tactile-camera",
+        action="store_true",
+        help="Export internal tactile RGB and geometry",
+    )
     args = parser.parse_args()
     run_id = datetime.now(timezone.utc).strftime("indent-%Y%m%dT%H%M%S%fZ")
     output = (
@@ -49,6 +55,7 @@ def main() -> None:
             hydroelastic_modulus_pa=args.hydroelastic_modulus_pa,
             overwrite=args.overwrite,
             capture_camera=args.camera,
+            tactile_camera=CameraSpec() if args.tactile_camera else None,
         )
     except (ValueError, FileExistsError, NotADirectoryError) as exc:
         parser.error(str(exc))
