@@ -21,6 +21,7 @@ def simulate(
     save_every: int,
     radius_m: float,
     hydroelastic_modulus_pa: float,
+    capture_camera: bool = False,
 ) -> dict[str, NDArray]:
     """Return a sphere-press trajectory in the fixed sensor frame.
 
@@ -52,6 +53,12 @@ def simulate(
         mesh.export(mesh_path)
         scene = gs.Scene(
             show_viewer=False,
+            renderer=gs.renderers.Rasterizer() if capture_camera else None,
+            vis_options=gs.options.VisOptions(
+                shadow=False, ambient_light=(0.28, 0.28, 0.28)
+            )
+            if capture_camera
+            else None,
             sim_options=gs.options.SimOptions(
                 dt=STEP_S, substeps=2, gravity=(0.0, 0.0, 0.0)
             ),
@@ -90,12 +97,30 @@ def simulate(
                     model=spec.model,
                     hydroelastic_modulus=hydroelastic_modulus_pa,
                 ),
+                surface=gs.surfaces.Default(color=(0.25, 0.8, 0.72, 1.0), smooth=True)
+                if capture_camera
+                else None,
             )
             start_z = height + radius_m + GAP_M
             sphere = scene.add_entity(
                 gs.morphs.Sphere(radius=radius_m, pos=(0.0, 0.0, start_z), fixed=True),
                 material=gs.materials.Rigid(coup_friction=spec.friction),
+                surface=gs.surfaces.Default(color=(0.94, 0.58, 0.24, 1.0), smooth=True)
+                if capture_camera
+                else None,
             )
+            camera = None
+            if capture_camera:
+                span = max(width, length, height + 2 * radius_m)
+                camera = scene.add_camera(
+                    res=(800, 700),
+                    pos=(1.3 * span, -1.7 * span, 1.27 * span),
+                    lookat=(0, 0, height * 0.9),
+                    fov=32,
+                    near=0.04 * span,
+                    far=8 * span,
+                    GUI=False,
+                )
             scene.build()
 
             rest = gel.get_state().pos.detach().cpu().numpy().reshape(-1, 3).copy()
@@ -110,6 +135,9 @@ def simulate(
             frames = [rest]
             centers = [sphere.get_pos().detach().cpu().numpy().reshape(3).copy()]
             frame_steps = [0]
+            camera_frames = []
+            if camera is not None:
+                camera_frames.append(np.asarray(camera.render(rgb=True)[0]).copy())
             for step in range(1, steps + 1):
                 phase = min(step / (0.8 * steps), 1.0)
                 travel = (depth_m + GAP_M) * phase**2 * (3 - 2 * phase)
@@ -123,6 +151,10 @@ def simulate(
                         sphere.get_pos().detach().cpu().numpy().reshape(3).copy()
                     )
                     frame_steps.append(step)
+                    if camera is not None:
+                        camera_frames.append(
+                            np.asarray(camera.render(rgb=True)[0]).copy()
+                        )
         finally:
             scene.destroy()
 
@@ -133,7 +165,7 @@ def simulate(
     if np.max(np.linalg.norm(positions[-1] - rest, axis=1)) < 1e-9:
         raise RuntimeError("The SAP indentation produced no measurable gel response")
 
-    return {
+    state = {
         "rest": rest,
         "tets": tets,
         "positions": positions,
@@ -142,3 +174,7 @@ def simulate(
         "indenter_center": indenter_center,
         "sphere_radius": np.asarray(radius_m),
     }
+
+    if capture_camera:
+        state["camera_rgb"] = np.stack(camera_frames)
+    return state

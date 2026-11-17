@@ -48,11 +48,22 @@ uv run --frozen python examples/displacement_indentation.py --shape sphere --dep
 
 ```bash
 uv run --frozen python scripts/plot_indentation.py output/<run-id>
+uv run --frozen python scripts/plot_indentation.py output/<run-id> --video
 uv run --frozen python scripts/plot_indentation.py output/<run-id> --frame 10 --texture ./pattern.png
 ```
 
 将命令中的 `<run-id>` 替换为实际目录名。默认使用最后一个采样帧。`--frame` 是从零开始的采样索引，支持负数。每帧生成独立的 `plots-step-*/` 目录，已有同名目录时报错。
 
 - `diagnostics.png` 显示压陷、标记位移、球面交叠的时序及选中帧的位移场。
-- `simulation.png` 对比静止和变形后的 FEM 三维表面及标记位置。
+- `simulation.png` 左侧显示三维凝胶和球形压头，右侧显示俯视位移场。颜色表示下沉量，箭头为放大 20 倍的标记面内位移。各帧共享色标和视野。
+- `indentation.mp4` 由 `--video` 启用，需在 PATH 上安装 FFmpeg。视频用上述视图按 10 FPS 播放所有采样帧，画面显示实际仿真时间。
 - `texture.png` 在传感器 XY 平面俯视比较静止和变形贴图。默认使用棋盘格。指定图片时，图像上边对应传感器的 +Y 方向。每个表面三角形携带从静止位置计算的 UV，绘图时用变形后的顶点插值。该图显示面内形变，三维高度变化可在仿真网格图和压陷图中查看。
+
+### Genesis 相机与贴图对照
+
+```bash
+uv run --frozen python scripts/run_indentation.py --camera
+uv run --frozen python scripts/plot_indentation.py output/<run-id> --camera-texture
+```
+
+`--camera` 将 Genesis 外部调试相机的 RGB 与 FEM 网格状态在同一仿真步保存到 `state.npz`。`--camera-texture` 使用 FFmpeg 生成 `genesis-and-texture.mp4` 及静态预览。左侧是相机画面，右侧是接触区域贴图与真实位移比例的标记。可以加 `--texture` 替换默认棋盘格。

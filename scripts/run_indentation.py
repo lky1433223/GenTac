@@ -25,10 +25,15 @@ def main() -> None:
     parser.add_argument("--save-every", type=int, default=5)
     parser.add_argument("--out", type=Path)
     parser.add_argument("--overwrite", action="store_true")
+    parser.add_argument(
+        "--camera", action="store_true", help="Record synchronized Genesis RGB frames"
+    )
     args = parser.parse_args()
     run_id = datetime.now(timezone.utc).strftime("indent-%Y%m%dT%H%M%S%fZ")
     output = (
-        args.out if args.out else Path(__file__).resolve().parents[1] / "output" / run_id
+        args.out
+        if args.out
+        else Path(__file__).resolve().parents[1] / "output" / run_id
     )
     try:
         report = run(
@@ -39,6 +44,7 @@ def main() -> None:
             radius_m=args.radius_mm / 1_000,
             hydroelastic_modulus_pa=args.hydroelastic_modulus_pa,
             overwrite=args.overwrite,
+            capture_camera=args.camera,
         )
     except (ValueError, FileExistsError, NotADirectoryError) as exc:
         parser.error(str(exc))

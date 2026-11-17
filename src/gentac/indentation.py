@@ -30,6 +30,7 @@ def run(
     radius_m: float = DEFAULT_RADIUS_M,
     hydroelastic_modulus_pa: float = DEFAULT_HYDROELASTIC_MODULUS_PA,
     overwrite: bool = False,
+    capture_camera: bool = False,
 ) -> dict:
     """Simulate a fixed, world-aligned sensor and save its surface and marker trajectories."""
     if not np.isfinite(depth_m) or not 0 < depth_m < gel.size_m[2]:
@@ -56,6 +57,7 @@ def run(
         save_every=save_every,
         radius_m=radius_m,
         hydroelastic_modulus_pa=hydroelastic_modulus_pa,
+        capture_camera=capture_camera,
     )
     rest, positions = state["rest"], state["positions"]
     faces, marker_faces, marker_weights = bind_markers(
@@ -128,6 +130,7 @@ def run(
             indenter_center_m=centers,
             indenter_radius_m=radius,
             surface_overlap_m=overlap,
+            **({"camera_rgb": state["camera_rgb"]} if capture_camera else {}),
         )
         (staging / "run.json").write_text(
             json.dumps(report, indent=2) + "\n", encoding="utf-8"
