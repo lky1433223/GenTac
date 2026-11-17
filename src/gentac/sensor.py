@@ -27,6 +27,31 @@ class GelSpec:
 
 
 @dataclass(frozen=True)
+class HousingSpec:
+    """Dimensions of the rigid backing below the sensor-frame origin, in meters."""
+
+    overhang_m: float
+    thickness_m: float
+
+    def size_m(self, gel: GelSpec) -> tuple[float, float, float]:
+        """Return the backing size for the given gel footprint."""
+        if (
+            not np.isfinite((self.overhang_m, self.thickness_m)).all()
+            or self.overhang_m < 0
+            or self.thickness_m <= 0
+        ):
+            raise ValueError(
+                "Housing needs a nonnegative overhang and positive thickness"
+            )
+        width, length, _ = gel.size_m
+        return (
+            width + 2 * self.overhang_m,
+            length + 2 * self.overhang_m,
+            self.thickness_m,
+        )
+
+
+@dataclass(frozen=True)
 class MarkerGrid:
     """Rectangular layout of material points on the undeformed contact face."""
 
@@ -66,6 +91,8 @@ MINI_GEL = GelSpec(
     surface_grid=17,
 )
 MINI_MARKERS = MarkerGrid(columns=11, rows=9, margin_m=0.002)
+# Provisional backing dimensions for the fixed bench.
+MINI_HOUSING = HousingSpec(overhang_m=0.002, thickness_m=0.006)
 
 
 def make_gel_mesh(spec: GelSpec) -> trimesh.Trimesh:

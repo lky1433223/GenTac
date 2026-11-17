@@ -20,10 +20,12 @@ uv run --frozen python scripts/run_indentation.py
 
 `--depth-mm` 控制压头的目标压入量，默认 0.5 mm。`--radius-mm` 和 `--hydroelastic-modulus-pa` 分别设置球半径和 SAP 凝胶接触模量，默认 3 mm 和 2 MPa。`--steps` 和 `--save-every` 控制仿真与采样。每次运行写入独立的 `output/indent-*/`，可用 `--out` 指定目录，已有目录须显式加 `--overwrite` 才能复用。
 
+压头由固定基座上的 X/Z 滑动关节做位置控制。`--slide-mm 1` 会在压入并保持 Z 目标后沿 +X 横拖 1 mm，负值沿 −X，默认 0。接触载荷会影响关节的实际位置。滑台等效质量和控制增益是暂定值，记录在 `run.json`。`state.npz` 保存实际球心 `indenter_center_m`、目标球心 `indenter_target_center_m` 和实际速度 `indenter_velocity_m_s`。
+
 - `state.npz` 包含时序 `surface_xyz_m`、共享三角面索引 `surface_faces`、`marker_id`、`marker_xyz_m` 和 `marker_disp_m`。坐标均为传感器局部坐标，单位为米。标记用同一组重心权重跟踪表面材料点。
 - `run.json` 记录材料、挂载、目标深度和诊断结果。`surface_overlap_m` 根据球心到变形后三角表面的最近距离计算，记录各采样时刻凝胶与理想球面的交叠深度。
 
-台架采用平板凝胶、底面粘接和暂定材料参数。GelSight Mini 的尺寸与标记行列数参考 UniVTAC 的 TacEx 配置，其余物理参数和边界条件仍待标定。
+台架采用平板凝胶和刚性块状外壳。外壳固定于世界系，顶面为传感器的 `z = 0`，凝胶底面粘接到外壳 link。当前外壳只通过粘接约束支撑凝胶，外壳碰撞关闭。GelSight Mini 的凝胶尺寸与标记行列数参考 UniVTAC 的 TacEx 配置，外壳几何和材料参数为暂定值。
 
 ## 早期位移约束原型
 

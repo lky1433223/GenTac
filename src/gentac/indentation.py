@@ -9,7 +9,14 @@ import numpy as np
 from trimesh.triangles import closest_point
 
 from .markers import bind_markers
-from .sensor import MINI_GEL, MINI_MARKERS, GelSpec, MarkerGrid
+from .sensor import (
+    MINI_GEL,
+    MINI_HOUSING,
+    MINI_MARKERS,
+    GelSpec,
+    HousingSpec,
+    MarkerGrid,
+)
 
 DEFAULT_RADIUS_M = 0.003
 DEFAULT_HYDROELASTIC_MODULUS_PA = 2_000_000.0
@@ -31,6 +38,8 @@ def run(
     hydroelastic_modulus_pa: float = DEFAULT_HYDROELASTIC_MODULUS_PA,
     overwrite: bool = False,
     capture_camera: bool = False,
+    housing: HousingSpec = MINI_HOUSING,
+    slide_m: float = 0.0,
 ) -> dict:
     """Simulate a fixed, world-aligned sensor and save its surface and marker trajectories."""
     if not np.isfinite(depth_m) or not 0 < depth_m < gel.size_m[2]:
@@ -47,7 +56,13 @@ def run(
         raise NotADirectoryError(output)
 
     # Load Genesis after argument checks, so CLI help works without initializing the solver.
-    from .sap import simulate
+    from .sap import (
+        STAGE_KP,
+        STAGE_KV,
+        STAGE_LINK_MASS_KG,
+        STAGE_MAX_FORCE_N,
+        simulate,
+    )
 
     markers_rest = markers.positions(gel)
     state = simulate(
@@ -58,6 +73,8 @@ def run(
         radius_m=radius_m,
         hydroelastic_modulus_pa=hydroelastic_modulus_pa,
         capture_camera=capture_camera,
+        housing=housing,
+        slide_m=slide_m,
     )
     rest, positions = state["rest"], state["positions"]
     faces, marker_faces, marker_weights = bind_markers(
@@ -99,6 +116,11 @@ def run(
             "rotation_wxyz": [1.0, 0.0, 0.0, 0.0],
         },
         "gel": asdict(gel),
+        "housing": {
+            "size_m": state["housing_size_m"].tolist(),
+            "center_m": state["housing_center_m"].tolist(),
+            "bonded_face": gel.bonded_face,
+        },
         "gel_volume_m3": gel.volume_m3,
         "marker_layout": asdict(markers),
         "preset_dimensions_and_marker_counts_reference": _PRESET_REFERENCE
@@ -107,7 +129,16 @@ def run(
         else None,
         "preset_assumptions": "planar gel, bottom-only bonding, marker margin, and uncalibrated mechanical properties",
         "requested_depth_m": depth_m,
+        "requested_slide_m": slide_m,
+        "actual_final_depth_m": float(gel.size_m[2] + radius - centers[-1, 2]),
+        "actual_final_slide_m": float(centers[-1, 0] - centers[0, 0]),
         "sphere_radius_m": radius,
+        "stage": {
+            "kp_n_m": STAGE_KP,
+            "kv_n_s_m": STAGE_KV,
+            "max_force_n_per_axis": STAGE_MAX_FORCE_N,
+            "effective_mass_kg_per_moving_link": STAGE_LINK_MASS_KG,
+        },
         "hydroelastic_modulus_pa": hydroelastic_modulus_pa,
         "max_surface_down_m": max_down,
         "max_marker_in_plane_m": peak_marker_xy,
@@ -128,6 +159,8 @@ def run(
             marker_xyz_m=markers_xyz,
             marker_disp_m=marker_disp,
             indenter_center_m=centers,
+            indenter_target_center_m=state["indenter_target_center"],
+            indenter_velocity_m_s=state["indenter_velocity"],
             indenter_radius_m=radius,
             surface_overlap_m=overlap,
             **({"camera_rgb": state["camera_rgb"]} if capture_camera else {}),

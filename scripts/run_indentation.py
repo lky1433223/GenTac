@@ -15,6 +15,9 @@ def main() -> None:
     """Parse arguments and run one indentation sequence."""
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--depth-mm", type=float, default=0.5)
+    parser.add_argument(
+        "--slide-mm", type=float, default=0.0, help="Signed X travel after indentation"
+    )
     parser.add_argument("--radius-mm", type=float, default=DEFAULT_RADIUS_M * 1_000)
     parser.add_argument(
         "--hydroelastic-modulus-pa",
@@ -39,6 +42,7 @@ def main() -> None:
         report = run(
             output,
             depth_m=args.depth_mm / 1_000,
+            slide_m=args.slide_mm / 1_000,
             steps=args.steps,
             save_every=args.save_every,
             radius_m=args.radius_mm / 1_000,

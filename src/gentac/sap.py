@@ -7,10 +7,42 @@ import genesis as gs
 import numpy as np
 from numpy.typing import NDArray
 
-from .sensor import GelSpec, make_gel_mesh
+from .sensor import MINI_HOUSING, GelSpec, HousingSpec, make_gel_mesh
 
 STEP_S = 0.002
 GAP_M = 0.0001
+STAGE_KP = 40_000.0
+STAGE_KV = 60.0
+STAGE_MAX_FORCE_N = 30.0
+STAGE_LINK_MASS_KG = 0.02
+
+
+def _stage_urdf(radius_m: float) -> str:
+    inertia = 0.4 * STAGE_LINK_MASS_KG * radius_m**2
+    return f"""<robot name="indentation_stage">
+      <link name="base"/>
+      <link name="carriage">
+        <inertial><mass value="{STAGE_LINK_MASS_KG}"/><inertia ixx="1e-6" iyy="1e-6" izz="1e-6" ixy="0" ixz="0" iyz="0"/></inertial>
+      </link>
+      <link name="indenter">
+        <inertial><mass value="{STAGE_LINK_MASS_KG}"/><inertia ixx="{inertia}" iyy="{inertia}" izz="{inertia}" ixy="0" ixz="0" iyz="0"/></inertial>
+        <visual><geometry><sphere radius="{radius_m}"/></geometry></visual>
+        <collision><geometry><sphere radius="{radius_m}"/></geometry></collision>
+      </link>
+      <joint name="slide_x" type="prismatic">
+        <parent link="base"/><child link="carriage"/><axis xyz="1 0 0"/>
+        <limit lower="-1" upper="1" effort="{STAGE_MAX_FORCE_N}" velocity="1"/>
+      </joint>
+      <joint name="slide_z" type="prismatic">
+        <parent link="carriage"/><child link="indenter"/><axis xyz="0 0 1"/>
+        <limit lower="-1" upper="1" effort="{STAGE_MAX_FORCE_N}" velocity="1"/>
+      </joint>
+    </robot>"""
+
+
+def _smooth_ramp(phase: float) -> float:
+    phase = min(max(phase, 0.0), 1.0)
+    return phase**2 * (3 - 2 * phase)
 
 
 def simulate(
@@ -22,6 +54,8 @@ def simulate(
     radius_m: float,
     hydroelastic_modulus_pa: float,
     capture_camera: bool = False,
+    housing: HousingSpec = MINI_HOUSING,
+    slide_m: float = 0.0,
 ) -> dict[str, NDArray]:
     """Return a sphere-press trajectory in the fixed sensor frame.
 
@@ -41,10 +75,14 @@ def simulate(
         raise ValueError(
             "Indentation must be positive and smaller than the gel thickness and sphere radius"
         )
+    if not np.isfinite(slide_m) or abs(slide_m) + radius_m > width / 2:
+        raise ValueError("Slide must keep the sphere footprint within the gel along X")
     if hydroelastic_modulus_pa <= 0:
         raise ValueError("Hydroelastic modulus must be positive")
 
     mesh = make_gel_mesh(spec)
+    housing_size = housing.size_m(spec)
+    housing_center = (0.0, 0.0, -housing_size[2] / 2)
     one_cell_volume = width * length * height / (spec.surface_grid - 1) ** 2
     if not gs._initialized:
         gs.init(backend=gs.cpu, precision="64", logging_level="warning")
@@ -81,6 +119,16 @@ def simulate(
             ),
         )
         try:
+            # The rigid backing transfers motion through the bond constraint.
+            # ponytail: use a solid visual backing until a shell needs collision geometry.
+            housing_body = scene.add_entity(
+                gs.morphs.Box(
+                    size=housing_size, pos=housing_center, fixed=True, collision=False
+                ),
+                material=gs.materials.Rigid(),
+                surface=gs.surfaces.Default(color=(0.32, 0.37, 0.48, 1.0)),
+                name="sensor_housing",
+            )
             gel = scene.add_entity(
                 gs.morphs.Mesh(
                     file=str(mesh_path),
@@ -102,8 +150,12 @@ def simulate(
                 else None,
             )
             start_z = height + radius_m + GAP_M
-            sphere = scene.add_entity(
-                gs.morphs.Sphere(radius=radius_m, pos=(0.0, 0.0, start_z), fixed=True),
+            stage_path = Path(scratch) / "indentation_stage.urdf"
+            stage_path.write_text(_stage_urdf(radius_m), encoding="utf-8")
+            stage = scene.add_entity(
+                gs.morphs.URDF(
+                    file=str(stage_path), pos=(0.0, 0.0, start_z), fixed=True
+                ),
                 material=gs.materials.Rigid(coup_friction=spec.friction),
                 surface=gs.surfaces.Default(color=(0.94, 0.58, 0.24, 1.0), smooth=True)
                 if capture_camera
@@ -111,17 +163,27 @@ def simulate(
             )
             camera = None
             if capture_camera:
-                span = max(width, length, height + 2 * radius_m)
+                span = max(*housing_size[:2], housing_size[2] + height + 2 * radius_m)
                 camera = scene.add_camera(
                     res=(800, 700),
                     pos=(1.3 * span, -1.7 * span, 1.27 * span),
-                    lookat=(0, 0, height * 0.9),
+                    lookat=(0, 0, (height - housing_size[2]) / 2),
                     fov=32,
                     near=0.04 * span,
                     far=8 * span,
                     GUI=False,
                 )
             scene.build()
+            sphere = stage.get_link("indenter")
+            dofs = [
+                stage.get_joint(name).dofs_idx_local[0]
+                for name in ("slide_x", "slide_z")
+            ]
+            stage.set_dofs_kp([STAGE_KP, STAGE_KP], dofs)
+            stage.set_dofs_kv([STAGE_KV, STAGE_KV], dofs)
+            stage.set_dofs_force_range(
+                [-STAGE_MAX_FORCE_N] * 2, [STAGE_MAX_FORCE_N] * 2, dofs
+            )
 
             rest = gel.get_state().pos.detach().cpu().numpy().reshape(-1, 3).copy()
             tets = gel.get_el2v().detach().cpu().numpy().copy()
@@ -130,18 +192,22 @@ def simulate(
             )
             if not bonded.size:
                 raise RuntimeError("The FEM mesh has no vertices on the bonded face")
-            gel.set_vertex_constraints(bonded, target_poss=rest[bonded])
+            gel.set_vertex_constraints(bonded, link=housing_body.base_link)
 
             frames = [rest]
             centers = [sphere.get_pos().detach().cpu().numpy().reshape(3).copy()]
+            target_centers = [np.array([0.0, 0.0, start_z])]
+            velocities = [np.zeros(3)]
             frame_steps = [0]
             camera_frames = []
             if camera is not None:
                 camera_frames.append(np.asarray(camera.render(rgb=True)[0]).copy())
             for step in range(1, steps + 1):
-                phase = min(step / (0.8 * steps), 1.0)
-                travel = (depth_m + GAP_M) * phase**2 * (3 - 2 * phase)
-                sphere.set_pos((0.0, 0.0, start_z - travel))
+                fraction = step / steps
+                press = _smooth_ramp(fraction / (0.45 if slide_m else 0.8))
+                travel = (depth_m + GAP_M) * press
+                lateral = slide_m * _smooth_ramp((fraction - 0.55) / 0.30)
+                stage.control_dofs_position([lateral, -travel], dofs)
                 scene.step()
                 if step % save_every == 0 or step == steps:
                     frames.append(
@@ -150,6 +216,11 @@ def simulate(
                     centers.append(
                         sphere.get_pos().detach().cpu().numpy().reshape(3).copy()
                     )
+                    target_centers.append(np.array([lateral, 0.0, start_z - travel]))
+                    vx, vz = (
+                        stage.get_dofs_velocity(dofs).detach().cpu().numpy().reshape(2)
+                    )
+                    velocities.append(np.array([vx, 0.0, vz]))
                     frame_steps.append(step)
                     if camera is not None:
                         camera_frames.append(
@@ -172,7 +243,11 @@ def simulate(
         "step": np.asarray(frame_steps),
         "time_s": STEP_S * np.asarray(frame_steps),
         "indenter_center": indenter_center,
+        "indenter_target_center": np.stack(target_centers),
+        "indenter_velocity": np.stack(velocities),
         "sphere_radius": np.asarray(radius_m),
+        "housing_size_m": np.asarray(housing_size),
+        "housing_center_m": np.asarray(housing_center),
     }
 
     if capture_camera:
