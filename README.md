@@ -41,3 +41,18 @@ uv run --frozen python examples/displacement_indentation.py --shape sphere --dep
 - `rgb_*.png` 是按仿真步编号的相机帧。
 - `summary.png` 并排显示压入前和压入后的 RGB。
 - `state.npz` 保存与 RGB 对齐的 `step`、`time_s`、`indenter_tip_z`、相机原始 `depth` 和顶面位移 `top_disp`，以及网格静止位置 `rest`、末帧位置 `pos` 和顶面索引 `top_rest_idx`。长度单位为米。
+
+## 查看固定台架结果
+
+把运行结束时打印的目录传给绘图脚本。绘图直接读取 `state.npz`，也支持已有的固定台架结果。
+
+```bash
+uv run --frozen python scripts/plot_indentation.py output/<run-id>
+uv run --frozen python scripts/plot_indentation.py output/<run-id> --frame 10 --texture ./pattern.png
+```
+
+将命令中的 `<run-id>` 替换为实际目录名。默认使用最后一个采样帧。`--frame` 是从零开始的采样索引，支持负数。每帧生成独立的 `plots-step-*/` 目录，已有同名目录时报错。
+
+- `diagnostics.png` 显示压陷、标记位移、球面交叠的时序及选中帧的位移场。
+- `simulation.png` 对比静止和变形后的 FEM 三维表面及标记位置。
+- `texture.png` 在传感器 XY 平面俯视比较静止和变形贴图。默认使用棋盘格。指定图片时，图像上边对应传感器的 +Y 方向。每个表面三角形携带从静止位置计算的 UV，绘图时用变形后的顶点插值。该图显示面内形变，三维高度变化可在仿真网格图和压陷图中查看。
